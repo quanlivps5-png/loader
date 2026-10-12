@@ -1,4 +1,4 @@
-local BASE = "https://keysys.ten-ban.workers.dev"
+local BASE = "https://keysys.quanlivps5.workers.dev"
 local HttpService = game:GetService("HttpService")
 
 if not getgenv().Key or getgenv().Key == "" then
