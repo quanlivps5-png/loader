@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Key</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--text:#e8eaf0;--mute:#8b93a7;--acc:#5b8cff;--ok:#3ecf8e;--bad:#ff5b6e}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+  .card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+  h1{font-size:20px;margin:0 0 4px}
+  p.sub{margin:0 0 20px;color:var(--mute);font-size:14px}
+  label{font-size:13px;color:var(--mute)}
+  input{width:100%;margin:6px 0 12px;padding:11px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:15px;letter-spacing:.5px}
+  input:focus{outline:none;border-color:var(--acc)}
+  button{width:100%;padding:11px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.sec{background:transparent;border:1px solid var(--line);color:var(--text);margin-top:10px}
+  .row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-of-type{border-bottom:0}
+  .row span:first-child{color:var(--mute)}
+  .ok{color:var(--ok)} .bad{color:var(--bad)}
+  .msg{margin-top:12px;font-size:14px;min-height:20px}
+  #info{display:none;margin-top:8px}
+  .note{font-size:12px;color:var(--mute);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Quản lý key</h1>
+  <p class="sub">Nhập key để xem thời hạn và đổi máy.</p>
+
+  <label for="key">Key của bạn</label>
+  <input id="key" placeholder="VD: A1B2C3D4E5F6G7H8" autocomplete="off" spellcheck="false">
+  <button id="check">Kiểm tra key</button>
+
+  <div id="info">
+    <div class="row"><span>Trạng thái</span><span id="st"></span></div>
+    <div class="row"><span>Hết hạn</span><span id="exp"></span></div>
+    <div class="row"><span>Còn lại</span><span id="left"></span></div>
+    <div class="row"><span>Đã gắn với máy</span><span id="lock"></span></div>
+    <button class="sec" id="reset">Đổi sang máy khác (reset)</button>
+    <div class="note" id="note"></div>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+const API = "https://keysys.quanlivps5.workers.dev";
+const $ = (id) => document.getElementById(id);
+let key = "";
+
+function fmt(ts){ return new Date(ts).toLocaleString("vi-VN"); }
+function left(ts){
+  const ms = ts - Date.now();
+  if (ms <= 0) return "Đã hết hạn";
+  const d = Math.floor(ms/86400000), h = Math.floor(ms%86400000/3600000), m = Math.floor(ms%3600000/60000);
+  return `${d} ngày ${h} giờ ${m} phút`;
+}
+function say(t, cls){ $("msg").textContent = t; $("msg").className = "msg " + (cls||""); }
+
+async function load(){
+  key = $("key").value.trim().toUpperCase();
+  if (!key) return say("Hãy nhập key.", "bad");
+  say("Đang kiểm tra...");
+  try {
+    const r = await fetch(`${API}/api/info?key=${encodeURIComponent(key)}`);
+    if (r.status === 404) { $("info").style.display = "none"; return say("Key không tồn tại hoặc đã bị xóa.", "bad"); }
+    const d = await r.json();
+    $("info").style.display = "block";
+    $("st").textContent = d.expired ? "Đã hết hạn" : "Đang hoạt động";
+    $("st").className = d.expired ? "bad" : "ok";
+    $("exp").textContent = fmt(d.exp);
+    $("left").textContent = left(d.exp);
+    $("lock").textContent = d.locked ? "Có" : "Chưa (sẽ gắn khi chạy script)";
+    $("reset").disabled = !d.canReset;
+    $("note").textContent = d.nextReset
+      ? "Bạn có thể reset lại sau " + fmt(d.nextReset)
+      : (d.locked ? "Mỗi key được tự reset máy 1 lần mỗi 24 giờ." : "");
+    say("");
+  } catch(e){ say("Không kết nối được máy chủ.", "bad"); }
+}
+
+async function reset(){
+  if (!confirm("Reset máy? Lần chạy script tiếp theo sẽ gắn key vào máy mới.")) return;
+  $("reset").disabled = true;
+  try {
+    const r = await fetch(`${API}/api/resethwid?key=${encodeURIComponent(key)}`);
+    const d = await r.json();
+    if (r.ok) say("Đã reset. Hãy chạy script trên máy mới.", "ok");
+    else if (d.error === "cooldown") say("Bạn vừa reset gần đây, hãy thử lại sau.", "bad");
+    else say("Không reset được: " + d.error, "bad");
+  } catch(e){ say("Không kết nối được máy chủ.", "bad"); }
+  load();
+}
+
+$("check").onclick = load;
+$("reset").onclick = reset;
+$("key").addEventListener("keydown", e => { if (e.key === "Enter") load(); });
+</script>
+</body>
+</html>
